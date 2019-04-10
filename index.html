@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Entanglement</title>
+</head>
+<body>
+  <canvas width="600" height="400"></canvas>
+  <script>
+    function uv2xy([ u, v ], tileSize) {
+      const kx = (2 * u) - v;
+      const ky = v;
+
+      return [
+        (kx * tileSize * (Math.sqrt(3) / 2)) + 300,
+        (ky * tileSize * 1.5) + 200
+      ];
+    }
+
+    function drawBorderTile(ctx, tileSize, [ u, v ]) {
+      const [ cx, cy ] = uv2xy([ u, v ], tileSize);
+      const a = tileSize;
+      const c = (a * Math.sqrt(3)) / 2;
+      const a2 = a / 2;
+
+      // the tile background, z-index is the lowest of three, thus rendering BEFORE everything else
+      {
+        ctx.beginPath();
+
+        ctx.moveTo(cx, cy - a); // A
+        ctx.lineTo(cx - c, cy - a2); // B
+        ctx.lineTo(cx - c, cy + a2); // C
+        ctx.lineTo(cx, cy + a); // D
+        ctx.lineTo(cx + c, cy + a2); // E
+        ctx.lineTo(cx + c, cy - a2); // F
+
+        ctx.closePath();
+
+        ctx.fillStyle = '#000';
+
+        ctx.fill();
+      }
+    }
+
+    function connectionPoints([ cx, cy ], tileSize, index) {
+      const a = tileSize;
+
+      const CONNECTION_POINTS = [
+        [cx - (a * (Math.sqrt(3) / 6)), cy + (a / 2) + (a / 3)],
+        [cx - (a * (Math.sqrt(3) / 3)), cy + (a / 2) + (a / 6)],
+
+        [cx - (a * (Math.sqrt(3) / 2)), cy + (a / 6)],
+        [cx - (a * (Math.sqrt(3) / 2)), cy - (a / 6)],
+
+        [cx - (a * (Math.sqrt(3) / 3)), cy - (a / 2) - (a / 6)],
+        [cx - (a * (Math.sqrt(3) / 6)), cy - (a / 2) - (a / 3)],
+
+        [cx + (a * (Math.sqrt(3) / 6)), cy - (a / 2) - (a / 3)],
+        [cx + (a * (Math.sqrt(3) / 3)), cy - (a / 2) - (a / 6)],
+
+        [cx + (a * (Math.sqrt(3) / 2)), cy - (a / 6)],
+        [cx + (a * (Math.sqrt(3) / 2)), cy + (a / 6)],
+
+        [cx + (a * (Math.sqrt(3) / 3)), cy + (a / 2) + (a / 6)],
+        [cx + (a * (Math.sqrt(3) / 6)), cy + (a / 2) + (a / 3)],
+      ];
+
+      return CONNECTION_POINTS[index];
+    }
+
+    function drawPathSegment(ctx, [ u, v ], tileSize, [ startIdx, endIdx ], color = '#f00') {
+        const [ cx, cy ] = uv2xy([ u, v ], tileSize);
+      // const startPoint = connectionPoints(cx, cy, tileSize, startIdx);
+      // const endPoint = connectionPoints(cx, cy, tileSize, endIdx);
+      drawPathSegmentAt(ctx, [ cx, cy ], tileSize, [ startIdx, endIdx ], color);
+    }
+
+    function drawPathSegmentAt(ctx, [ cx, cy ], tileSize, [ startIdx, endIdx ], color = '#f00') {
+      const startPoint = connectionPoints([ cx, cy ], tileSize, startIdx);
+      const endPoint = connectionPoints([ cx, cy ], tileSize, endIdx);
+
+      // black stroke, 2px thick
+      {
+        ctx.beginPath();
+
+        ctx.moveTo(startPoint[0], startPoint[1]);
+
+        // bezier with two control points, being same point, the center of a tile
+        ctx.bezierCurveTo(cx, cy, cx, cy, endPoint[0], endPoint[1]);
+
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 8;
+
+        ctx.stroke();
+      }
+
+      // the white insides of a line
+      {
+        ctx.beginPath();
+
+        ctx.moveTo(startPoint[0], startPoint[1]);
+
+        ctx.bezierCurveTo(cx, cy, cx, cy, endPoint[0], endPoint[1]);
+
+        // white line, 4px thick
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+
+        ctx.stroke();
+      }
+    }
+
+    function drawTileAt(ctx, tileSize, [ cx, cy ], connections) {
+      const a = tileSize;
+      const c = (a * Math.sqrt(3)) / 2;
+      const a2 = a / 2;
+
+      // the tile background, z-index is the lowest of three, thus rendering BEFORE everything else
+      {
+        ctx.beginPath();
+
+        ctx.moveTo(cx, cy - a); // A
+        ctx.lineTo(cx - c, cy - a2); // B
+        ctx.lineTo(cx - c, cy + a2); // C
+        ctx.lineTo(cx, cy + a); // D
+        ctx.lineTo(cx + c, cy + a2); // E
+        ctx.lineTo(cx + c, cy - a2); // F
+
+        ctx.closePath();
+
+        ctx.fillStyle = '#bebebe';
+
+        // stroking has no effect on the resulting image here
+        // ctx.stroke();
+        ctx.fill();
+      }
+
+      for (const [startIdx, endIdx] of connections) {
+        drawPathSegmentAt(ctx, [ cx, cy ], tileSize, [ startIdx, endIdx ], '#fff');
+      }
+
+      // the tile frame, z-index is higher, thus rendering AFTER all the connection lines
+      {
+        ctx.beginPath();
+
+        ctx.moveTo(cx, cy - a); // A
+        ctx.lineTo(cx - c, cy - a2); // B
+        ctx.lineTo(cx - c, cy + a2); // C
+        ctx.lineTo(cx, cy + a); // D
+        ctx.lineTo(cx + c, cy + a2); // E
+        ctx.lineTo(cx + c, cy - a2); // F
+
+        ctx.closePath();
+
+        // ctx.fillStyle = '#bebebe';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 6;
+
+        // DO NOT FILL POLYGON - this way all the connection lines will be covered by the fill color
+        // ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    function drawTile(ctx, tileSize, [ u, v ], connections) {
+      const [ cx, cy ] = uv2xy([ u, v ], tileSize);
+
+      drawTileAt(ctx, tileSize, [ cx, cy ], connections);
+
+      const DEBUG = true;
+
+      if (DEBUG) {
+        const FONT_SIZE = 12;
+        ctx.font = `${FONT_SIZE}px Arial`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#e25";
+        ctx.fillText(`${u},${v}`, cx, cy + (FONT_SIZE / 4));
+      }
+    }
+
+    function connectionInToConnectionOut(connections, input) {
+      for (let pair of connections) {
+        if (pair[0] === input) {
+          return pair[1];
+        } else if (pair[1] === input) {
+          return pair[0];
+        }
+      }
+
+      return null;
+    }
+
+    function connectionOutToNeighbourUV([ u, v ], output) {
+      if (output == 0 || output == 1) {
+        return [ u, v + 1 ];
+      } else if (output == 2 || output == 3) {
+        return [ u - 1, v ];
+      } else if (output == 4 || output == 5) {
+        return [ u - 1, v - 1 ];
+      } else if (output == 6 || output == 7) {
+        return [ u, v - 1 ];
+      } else if (output == 8 || output == 9) {
+        return [ u + 1, v ];
+      } else if (output == 10 || output == 11) {
+        return [ u + 1, v + 1 ];
+      }
+
+      return [ u, v ];
+    }
+
+    function connectionOutToNeighbourConnectionIn(output) {
+      if (output > 5) {
+        if ((output % 2) === 0) {
+          return output - 5;
+        } else {
+          return output - 7;
+        }
+      } else {
+        if ((output % 2) === 0) {
+          return output + 7;
+        } else {
+          return output + 5;
+        }
+      }
+    }
+
+    function isEndOfPath([ u, v ], FIELD_SIZE) {
+      return (u === 0 && v === 0) || (Math.abs(u) === FIELD_SIZE || Math.abs(v) === FIELD_SIZE);
+    }
+
+    function randomInt(max) {
+      return Math.floor(Math.random() * Math.floor(max));
+    }
+
+    function shuffle(a) {
+      for (let i = 0; i < a.length - 2; ++i) {
+        const lastElementIndex = a.length - 1 - i;
+
+        const t = randomInt(lastElementIndex);
+
+        const tmp = a[t];
+        a[t] = a[lastElementIndex];
+        a[lastElementIndex] = tmp;
+      }
+
+      return a;
+    }
+
+    function splitIntoChunks(a, n) {
+      let acc = [];
+
+      for (let i = 0; i < a.length; ++i) {
+        const chunkIndex = Math.floor(i / n);
+
+        if (!acc[chunkIndex]) {
+          acc[chunkIndex] = [];
+        }
+
+        acc[chunkIndex].push(a[i]);
+      }
+
+      return acc;
+    }
+
+    function generateTile() {
+      let connections = [];
+
+      for (let i = 0; i < 12; ++i) {
+        connections.push(i);
+      }
+
+      shuffle(connections);
+
+      return splitIntoChunks(connections, 2);
+    }
+
+    function rotateTile(connections, direction) {
+      if (direction > 0) {
+        return connections.map(([ a, b ]) => [ (a + 14) % 12, (b + 14) % 12]);
+      } else if (direction < 0) {
+        return connections.map(([ a, b ]) => [ (a + 10) % 12, (b + 10) % 12]);
+      } else {
+        return connections;
+      }
+    }
+
+    function findExistingPathSegmentIdx(existingPathSegments, [ nextU, nextV ]) {
+      return existingPathSegments.findIndex(([ u1, v1 ]) => u1 === nextU && v1 === nextV);
+    }
+
+    function traversePath(existingPathSegments, [ nextU, nextV ], output, FIELD_SIZE, handler) {
+      let nextInput = -1;
+      let nextOutput = output;
+      let connections = [];
+
+      let i = -1;
+
+      do {
+        if (isEndOfPath([ nextU, nextV ], FIELD_SIZE)) {
+          break;
+        }
+
+        i = findExistingPathSegmentIdx(existingPathSegments, [ nextU, nextV ]);
+
+        if (i < 0) {
+          break;
+        }
+
+        [ nextU, nextV, connections ] = existingPathSegments[i];
+
+        nextInput = connectionOutToNeighbourConnectionIn(nextOutput);
+        nextOutput = connectionInToConnectionOut(connections, nextInput);
+
+        handler.call(null, [ nextU, nextV ], connections, nextInput, nextOutput);
+
+        [ nextU, nextV ] = connectionOutToNeighbourUV([ nextU, nextV ], nextOutput);
+      } while (i > -1);
+
+      return [ nextU, nextV, nextInput, nextOutput ];
+    }
+
+    function findNextUV(existingPathSegments, [ nextU, nextV ], output, FIELD_SIZE) {
+      return traversePath(existingPathSegments, [ nextU, nextV ], output, FIELD_SIZE, () => {})
+    }
+
+    function drawField(ctx, path, nextTile) {
+      const TILE_SIZE = 25;
+      const FIELD_SIZE = 4;
+
+      for (let u = -FIELD_SIZE; u <= FIELD_SIZE; ++u) {
+        for (let v = -FIELD_SIZE; v <= FIELD_SIZE; ++v) {
+          if ((u - v) > 4 || (v - u) > 4) { continue; }
+
+          if ((u == 0 && v == 0) || u == -4 || u == 4 || v == -4 || v == 4 || (u - v) == 4 || (v - u) == 4) {
+            drawBorderTile(ctx, TILE_SIZE, [ u, v ]);
+          } else {
+            drawTile(ctx, TILE_SIZE, [u, v], []);
+          }
+        }
+      }
+
+      const START_OUTPUT = 4;
+
+      let [ nextU, nextV, nextOutput ] = [ 0, 0, START_OUTPUT ];
+      let existingPathSegments = [];
+
+      [ nextU, nextV ] = connectionOutToNeighbourUV([ 0, 0 ], START_OUTPUT);
+      nextOutput = START_OUTPUT;
+
+      // draw the existing path' tiles
+      for (let connections of path) {
+        [ nextU, nextV, _1, nextOutput ] = findNextUV(existingPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE);
+
+        drawTile(ctx, TILE_SIZE, [ nextU, nextV ], connections);
+
+        existingPathSegments.push([ nextU, nextV, connections ]);
+      }
+
+      // draw the path itself
+      [ nextU, nextV ] = connectionOutToNeighbourUV([ 0, 0 ], START_OUTPUT);
+      nextOutput = START_OUTPUT;
+
+      traversePath(existingPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE, ([ u, v ], connections, nextInput, nextOutput) => {
+        drawPathSegment(ctx, [ u, v ], TILE_SIZE, [ nextInput, nextOutput ], '#f00');
+      });
+
+      // draw next tile
+      [ nextU, nextV ] = connectionOutToNeighbourUV([ 0, 0 ], START_OUTPUT);
+      nextOutput = START_OUTPUT;
+      [ nextU, nextV, _1, nextOutput ] = findNextUV(existingPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE);
+
+      drawTile(ctx, TILE_SIZE, [ nextU, nextV ], nextTile);
+
+      // draw potential / future path
+      const tmpPathSegments = existingPathSegments.concat([ [ nextU, nextV, nextTile ] ]);
+
+      traversePath(tmpPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE, ([ u, v ], connections, input, output) => {
+        drawPathSegment(ctx, [ u, v ], TILE_SIZE, [ input, output ], '#f55');
+      });
+    }
+
+    function isEndOfGame(path, START_OUTPUT, FIELD_SIZE) {
+      let [ nextU, nextV ] = connectionOutToNeighbourUV([ 0, 0 ], START_OUTPUT);
+      let nextOutput = START_OUTPUT;
+      const existingPathSegments = [];
+
+      for (let connections of path) {
+        [ nextU, nextV, _1, nextOutput ] = findNextUV(existingPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE);
+
+        existingPathSegments.push([ nextU, nextV, connections ]);
+      }
+
+      [ nextU, nextV, _1, _2 ] = findNextUV(existingPathSegments, [ nextU, nextV ], nextOutput, FIELD_SIZE);
+
+      return isEndOfPath([ nextU, nextV ], FIELD_SIZE);
+    }
+
+    function main() {
+      const canvas = document.querySelector('canvas');
+      const ctx = canvas.getContext('2d');
+
+      let nextTile = generateTile();
+      let pocket = generateTile();
+      let path = [];
+
+      drawField(ctx, path, nextTile);
+
+      const TILE_SIZE = 25;
+      const FIELD_SIZE = 4;
+      const START_OUTPUT = 4;
+      drawTileAt(ctx, TILE_SIZE, [ TILE_SIZE * 1.5, TILE_SIZE * 1.5 ], pocket);
+
+      document.addEventListener('keyup', (e) => {
+        // ArrowRight - rotate next tile right
+        if (e.keyCode === 39) {
+          e.preventDefault();
+          nextTile = rotateTile(nextTile, 1);
+        } else
+        // ArrowLeft - rotate next tile left
+        if (e.keyCode === 37) {
+          e.preventDefault();
+          nextTile = rotateTile(nextTile, -1);
+        } else
+        // Return - place tile, generate new next tile
+        if (e.keyCode === 13) {
+          e.preventDefault();
+          path.push(nextTile);
+          nextTile = generateTile();
+
+          if (isEndOfGame(path, START_OUTPUT, FIELD_SIZE)) {
+            alert('Game over');
+            return;
+          }
+        } else
+        // Space - swap pocket and next tile
+        if (e.keyCode === 32) {
+          e.preventDefault();
+          const tmp = nextTile;
+          nextTile = pocket;
+          pocket = tmp;
+        }
+
+        drawField(ctx, path, nextTile);
+
+        const TILE_SIZE = 25;
+        drawTileAt(ctx, TILE_SIZE, [ TILE_SIZE * 1.5, TILE_SIZE * 1.5 ], pocket);
+      });
+    }
+
+    // window.addEventListener('DOMContentLoaded', () => main());
+    main();
+
+  </script>
+</body>
+</html>
